@@ -21,11 +21,25 @@ Replaces the native **"Open in New Window"** bookmark behavior with a smart, con
 
 ## Demo
 
-[Placeholder: Insert GIF or Video Demo here demonstrating both the submenu and the auto-container behavior]
+Works with Bookmark Sidebar Panel
+
+https://github.com/user-attachments/assets/7120ab3b-1250-487e-ab4c-f84cabaa2638
+
+
+Works with Bookmark Button
+
+https://github.com/user-attachments/assets/f3281295-8c5d-40e1-8916-4925a8589483
+
+
 
 ## How to Install
 
-[Placeholder: Write step-by-step installation instructions for the mod (e.g., placing files, enabling in Sine / Mod Manager, restarting Zen)]
+1. Install latest version of Sine by following all prompted instructions.
+2. Restart Zen Browser.
+3. Open settings and go to the "Sine" tab.
+4. Locate the Local Installation section.
+5. Type t4nk3rchu/open-in-container-window and click Install
+6. A popup for restart should appear — click on that to restart Zen.
 
 ## Configuration Options
 
