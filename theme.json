@@ -16,6 +16,7 @@
     },
     "preferences": "https://raw.githubusercontent.com/t4nk3rchu/open-in-container-window/refs/heads/master/preferences.json",
     "readme": "https://raw.githubusercontent.com/t4nk3rchu/open-in-container-window/refs/heads/master/README.md",
+    "image": "https://raw.githubusercontent.com/t4nk3rchu/open-in-container-window/refs/heads/master/ScreenshotDemo.png",
     "author": "TankerChu",
     "version": "1.0.0",
     "tags": [
