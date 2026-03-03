@@ -1,13 +1,3 @@
----
-id: UG-OICW
-type: user-guide
-status: approved
-project: Open-in-Container-Window
-owner: "@TankerChu"
-tags: [mod, container, bookmarks, zen-browser]
-created: 2026-03-03
----
-
 # Open in Container Window
 
 **Open in Container Window** is a mod for the [Zen Browser](https://zen-browser.app/) that deeply integrates native bookmark behavior with Firefox's container tabs and Zen's workspaces. 
