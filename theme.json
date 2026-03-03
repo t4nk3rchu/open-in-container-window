@@ -1,5 +1,6 @@
 {
     "id": "open-in-container-window",
+    "js": true,
     "name": "Open in Container Window",
     "description": "Adds 'Open in New Container Window' option to the bookmark context menu with a submenu listing all containers. Opens a new browser window with the bookmark loaded in the selected container.",
     "scripts": {
@@ -11,17 +12,15 @@
     },
     "homepage": "https://github.com/t4nk3rchu/open-in-container-window",
     "style": {
-        "chrome": "userChrome.css"
+        "chrome": "https://raw.githubusercontent.com/t4nk3rchu/open-in-container-window/refs/heads/master/userChrome.css"
     },
-    "preferences": "preferences.json",
-    "readme": "https://github.com/t4nk3rchu/open-in-container-window/blob/master/README.md",
+    "preferences": "https://raw.githubusercontent.com/t4nk3rchu/open-in-container-window/refs/heads/master/preferences.json",
+    "readme": "https://raw.githubusercontent.com/t4nk3rchu/open-in-container-window/refs/heads/master/README.md",
     "author": "TankerChu",
     "version": "1.0.0",
     "tags": [
-        "sine",
         "container",
         "bookmark",
-        "fx-autoconfig",
         "JavaScript"
     ],
     "createdAt": "2026-03-03",
