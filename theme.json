@@ -12,11 +12,11 @@
     },
     "homepage": "https://github.com/t4nk3rchu/open-in-container-window",
     "style": {
-        "chrome": "https://raw.githubusercontent.com/t4nk3rchu/open-in-container-window/refs/heads/master/userChrome.css"
+        "chrome": "userChrome.css"
     },
-    "preferences": "https://raw.githubusercontent.com/t4nk3rchu/open-in-container-window/refs/heads/master/preferences.json",
-    "readme": "https://raw.githubusercontent.com/t4nk3rchu/open-in-container-window/refs/heads/master/README.md",
-    "image": "https://raw.githubusercontent.com/t4nk3rchu/open-in-container-window/refs/heads/master/ScreenshotDemo.png",
+    "preferences": "preferences.json",
+    "readme": "https://raw.githubusercontent.com/t4nk3rchu/open-in-container-window/refs/heads/main/README.md",
+    "image": "https://raw.githubusercontent.com/t4nk3rchu/open-in-container-window/refs/heads/main/ScreenshotDemo.png",
     "author": "TankerChu",
     "version": "1.0.0",
     "tags": [
