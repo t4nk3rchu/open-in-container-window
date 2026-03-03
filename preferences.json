@@ -1,0 +1,10 @@
+[
+  {
+    "type": "checkbox",
+    "property": "extensions.openInContainerWindow.autoContainerWindow",
+    "label": "Replace 'Open in New Window' default behaviour",
+    "placeholder": false,
+    "default": true,
+    "description": "When enabled, 'Open in New Window' will automatically use the container assigned to the bookmark's workspace"
+  }
+]

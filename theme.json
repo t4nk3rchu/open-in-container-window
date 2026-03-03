@@ -1,0 +1,30 @@
+{
+    "id": "open-in-container-window",
+    "name": "Open in Container Window",
+    "description": "Adds 'Open in New Container Window' option to the bookmark context menu with a submenu listing all containers. Opens a new browser window with the bookmark loaded in the selected container.",
+    "homepage": "",
+    "preferences": "preferences.json",
+    "style": {
+        "chrome": "userChrome.css",
+        "content": ""
+    },
+    "scripts": {
+        "openInContainerWindow.uc.js": {
+            "include": [
+                "chrome://browser/content/browser.xhtml"
+            ]
+        }
+    },
+    "author": "TankerChu",
+    "version": "1.2.0",
+    "tags": [
+        "sine",
+        "container",
+        "bookmark",
+        "fx-autoconfig",
+        "JavaScript"
+    ],
+    "createdAt": "2026-03-03",
+    "updatedAt": "2026-03-03",
+    "fork": ["zen"]
+}
