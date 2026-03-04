@@ -1,10 +1,18 @@
 [
   {
     "type": "checkbox",
-    "property": "extensions.openInContainerWindow.autoContainerWindow",
-    "label": "Replace 'Open in New Window' default behaviour",
+    "property": "extensions.openInContainerWindow.autoContainerWindowInBookmark",
+    "label": "Replace 'Open in New Window' default behaviour in bookmarks",
     "placeholder": false,
     "default": true,
-    "description": "When enabled, 'Open in New Window' will automatically use the container assigned to the bookmark's workspace"
+    "description": "When enabled, 'Open in New Window' on bookmarks will automatically use the container assigned to the bookmark's workspace"
+  },
+  {
+    "type": "checkbox",
+    "property": "extensions.openInContainerWindow.autoContainerWindowGlobally",
+    "label": "Replace 'Open Link in New Window' default behaviour globally",
+    "placeholder": false,
+    "default": true,
+    "description": "When enabled, 'Open Link in New Window' on right-clicked links will automatically use the current tab's container"
   }
 ]

@@ -2,7 +2,8 @@
   "use strict";
 
   // ─── Preference Keys ────────────────────────────────────────────
-  const PREF_AUTO_CONTAINER = "extensions.openInContainerWindow.autoContainerWindow";
+  const PREF_AUTO_CONTAINER = "extensions.openInContainerWindow.autoContainerWindowInBookmark";
+  const PREF_AUTO_CONTAINER_GLOBAL = "extensions.openInContainerWindow.autoContainerWindowGlobally";
 
   // ─── Helpers ────────────────────────────────────────────────────
   const getPref = (key, fallback) => {
@@ -27,13 +28,21 @@
   // ─── Constants ──────────────────────────────────────────────────
   const ACCESS_KEY = "W";
 
-  // ─── Main initialisation ────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  //  MAIN INITIALISATION
+  // ═══════════════════════════════════════════════════════════════
   function init() {
-    // Patch the main browser document's placesContext
+    // Patch the main browser document's placesContext (bookmarks)
     patchPlacesContext(document);
     // Watch for sidebar loads to patch the sidebar's own placesContext
     watchSidebar();
+    // Patch the general content area context menu (right-click on links)
+    patchContentAreaContextMenu();
   }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  SECTION 1: BOOKMARKS CONTEXT MENU (placesContext)
+  // ═══════════════════════════════════════════════════════════════
 
   // ─── Patch any document's placesContext with our menu + interceptor ─
   function patchPlacesContext(doc) {
@@ -109,34 +118,29 @@
 
     // ─── Build container list dynamically on each popup show ─────
     popup.addEventListener("popupshowing", () => {
-      buildContainerMenu(popup, doc);
+      buildContainerMenu(popup, (ucId) => {
+        openInContainerWindow(ucId, null, doc);
+      }, doc);
     });
 
     // ─── Control visibility on parent context menu show ──────────
     placesContext.addEventListener("popupshowing", () => {
-      updateMenuVisibility(menu, doc);
+      updateBookmarkMenuVisibility(menu, doc);
     });
 
     // ─── Intercept native "Open in New Window" for auto-container ─
-    interceptOpenInNewWindow(placesContext, doc);
+    interceptBookmarkOpenInNewWindow(placesContext, doc);
   }
 
   // ─── Watch for sidebar loads ─────────────────────────────────────
   function watchSidebar() {
-    // The sidebar <browser> element loads different panels as separate documents.
-    // When the bookmarks sidebar opens, it creates its OWN placesContext popup
-    // (via #include placesContextMenu.inc.xhtml in bookmarksSidebar.xhtml).
-    // We need to patch that separate context menu too.
     const sidebar = document.getElementById("sidebar");
     if (!sidebar) return;
 
-    // Listen for new documents loading in the sidebar
     sidebar.addEventListener("load", () => {
       try {
         const sidebarDoc = sidebar.contentDocument;
         if (!sidebarDoc) return;
-
-        // Check if this panel has a placesContext (bookmarks, history, etc.)
         const sidebarPlacesContext = sidebarDoc.getElementById("placesContext");
         if (sidebarPlacesContext) {
           patchPlacesContext(sidebarDoc);
@@ -144,7 +148,7 @@
       } catch (err) {
         // Cross-origin or not available — ignore
       }
-    }, true); // Use capture phase to catch the load event from the iframe
+    }, true);
 
     // Also check if the sidebar is already loaded with a bookmarks panel
     try {
@@ -157,28 +161,23 @@
     } catch (_) {}
   }
 
-  // ─── Show / hide depending on context (bookmarks only) ─────────
-  function updateMenuVisibility(menu, doc) {
+  // ─── Show / hide bookmark menu (bookmarks only) ────────────────
+  function updateBookmarkMenuVisibility(menu, doc) {
     let shouldShow = false;
-
     try {
       const popup = doc.getElementById("placesContext");
       const triggerNode = popup.triggerNode;
-
       if (triggerNode) {
         const node = getPlacesNodeFromTrigger(triggerNode, doc);
         if (node) {
-          // Show only for URI-type nodes (actual bookmarks, not folders/separators)
           shouldShow =
             node.type === Ci.nsINavHistoryResultNode.RESULT_TYPE_URI ||
             node.type === 0;
         }
       }
     } catch (e) {
-      // If anything goes wrong, hide the menu
       shouldShow = false;
     }
-
     menu.hidden = !shouldShow;
   }
 
@@ -186,8 +185,7 @@
   function getPlacesNodeFromTrigger(triggerNode, doc) {
     doc = doc || document;
     try {
-      // 1. Try PlacesUIUtils.getViewForNode — canonical Firefox approach
-      //    Works for toolbar, sidebar tree, library, etc.
+      // 1. Try PlacesUIUtils.getViewForNode
       if (typeof PlacesUIUtils !== "undefined") {
         try {
           const view = PlacesUIUtils.getViewForNode(triggerNode);
@@ -228,8 +226,364 @@
     return null;
   }
 
+  // ─── Intercept bookmark "Open in New Window" ───────────────────
+  function interceptBookmarkOpenInNewWindow(placesContext, doc) {
+    doc = doc || document;
+    let originalOnCommand = null;
+    let originalCommand = null;
+    let patched = false;
+
+    placesContext.addEventListener("popupshowing", () => {
+      const openNewWindow = doc.getElementById(
+        "placesContext_open:newwindow",
+      );
+      if (!openNewWindow) return;
+
+      // Save originals once
+      if (!patched) {
+        originalOnCommand = openNewWindow.getAttribute("oncommand");
+        originalCommand = openNewWindow.getAttribute("command");
+        patched = true;
+      }
+
+      // Check pref LIVE on every menu open
+      const isEnabled = getPref(PREF_AUTO_CONTAINER, true);
+
+      if (isEnabled) {
+        openNewWindow.removeAttribute("oncommand");
+        openNewWindow.removeAttribute("command");
+
+        if (openNewWindow._containerHandler) {
+          openNewWindow.removeEventListener(
+            "command",
+            openNewWindow._containerHandler,
+          );
+        }
+
+        openNewWindow._containerHandler = async () => {
+          const triggerNode =
+            doc.getElementById("placesContext")?.triggerNode;
+          if (!triggerNode) {
+            _runOriginalBookmarkOpen(doc);
+            return;
+          }
+
+          const node = getPlacesNodeFromTrigger(triggerNode, doc);
+          if (!node || !node.uri) {
+            _runOriginalBookmarkOpen(doc);
+            return;
+          }
+
+          let userContextId = 0;
+          try {
+            userContextId = await getWorkspaceContainerForBookmark(node);
+          } catch (e) {
+            console.warn("[OpenInContainerWindow] Container lookup failed:", e);
+          }
+
+          if (userContextId > 0) {
+            openInContainerWindow(userContextId, node.uri, doc);
+          } else {
+            _runOriginalBookmarkOpen(doc);
+          }
+        };
+
+        openNewWindow.addEventListener("command", openNewWindow._containerHandler);
+      } else {
+        // Pref is OFF — restore native behavior
+        if (openNewWindow._containerHandler) {
+          openNewWindow.removeEventListener(
+            "command",
+            openNewWindow._containerHandler,
+          );
+          openNewWindow._containerHandler = null;
+        }
+        if (originalOnCommand) {
+          openNewWindow.setAttribute("oncommand", originalOnCommand);
+        }
+        if (originalCommand) {
+          openNewWindow.setAttribute("command", originalCommand);
+        }
+      }
+    });
+  }
+
+  // ─── Run the original bookmark "Open in New Window" command ─────
+  function _runOriginalBookmarkOpen(doc) {
+    doc = doc || document;
+    try {
+      const popup = doc.getElementById("placesContext");
+      const triggerNode = popup?.triggerNode;
+      if (triggerNode) {
+        const node = getPlacesNodeFromTrigger(triggerNode, doc);
+        if (node && node.uri) {
+          openTrustedLinkIn(node.uri, "window", {
+            triggeringPrincipal:
+              Services.scriptSecurityManager.getSystemPrincipal(),
+          });
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn("[OpenInContainerWindow] Bookmark fallback open failed:", e);
+    }
+  }
+
+  // ─── Resolve a bookmark's workspace container ──────────────────
+  async function getWorkspaceContainerForBookmark(node) {
+    try {
+      if (
+        typeof ZenWorkspaceBookmarksStorage === "undefined" ||
+        typeof gZenWorkspaces === "undefined"
+      ) {
+        return 0;
+      }
+
+      let currentNode = node;
+      while (currentNode) {
+        const guid = currentNode.bookmarkGuid;
+        if (guid) {
+          const workspaceUuids =
+            await ZenWorkspaceBookmarksStorage.getBookmarkWorkspaces(guid);
+          if (workspaceUuids && workspaceUuids.length > 0) {
+            const workspace = gZenWorkspaces.getWorkspaceFromId(
+              workspaceUuids[0],
+            );
+            if (workspace && workspace.containerTabId) {
+              return workspace.containerTabId;
+            }
+          }
+        }
+        currentNode = currentNode.parent;
+      }
+    } catch (e) {
+      console.warn(
+        "[OpenInContainerWindow] Failed to resolve workspace container:",
+        e,
+      );
+    }
+    return 0;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  SECTION 2: GLOBAL CONTENT AREA CONTEXT MENU (links on pages)
+  // ═══════════════════════════════════════════════════════════════
+
+  function patchContentAreaContextMenu() {
+    const contentContext = document.getElementById("contentAreaContextMenu");
+    if (!contentContext) {
+      setTimeout(patchContentAreaContextMenu, 500);
+      return;
+    }
+
+    if (contentContext._openInContainerWindowPatched) return;
+    contentContext._openInContainerWindowPatched = true;
+
+    // ─── Create "Open Link in New Container Window" submenu ─────
+    let menu;
+    let popup;
+
+    // Try to clone the native "Open Link in New Container Tab" menu for styling consistency
+    const nativeMenu = document.getElementById("context-openlinkinusercontext-menu");
+
+    if (nativeMenu) {
+      menu = nativeMenu.cloneNode(true);
+      menu.id = "context-openLinkInContainerWindow";
+
+      menu.removeAttribute("data-l10n-id");
+      menu.removeAttribute("data-l10n-args");
+
+      menu.setAttribute("label", "Open Link in New Container Window");
+      menu.setAttribute("accesskey", ACCESS_KEY);
+
+      const textLabel = menu.querySelector(".menu-text");
+      if (textLabel) {
+        textLabel.removeAttribute("data-l10n-id");
+        textLabel.removeAttribute("data-l10n-args");
+        textLabel.setAttribute("value", "Open Link in New Container Window");
+        textLabel.setAttribute("accesskey", ACCESS_KEY);
+      }
+
+      popup = menu.querySelector("menupopup");
+      if (popup) {
+        popup.id = "context-openLinkInContainerWindowPopup";
+        popup.innerHTML = "";
+      }
+    }
+
+    if (!menu) {
+      menu = document.createXULElement("menu");
+      menu.id = "context-openLinkInContainerWindow";
+      menu.setAttribute("label", "Open Link in New Container Window");
+      menu.setAttribute("accesskey", ACCESS_KEY);
+      menu.classList.add("context-menu-open-link");
+    }
+
+    // Ensure the class is always present (clone may or may not have it)
+    if (!menu.classList.contains("context-menu-open-link")) {
+      menu.classList.add("context-menu-open-link");
+    }
+
+    if (!popup) {
+      popup = document.createXULElement("menupopup");
+      popup.id = "context-openLinkInContainerWindowPopup";
+      menu.appendChild(popup);
+    }
+
+    // ─── Position after "Open Link in New Window" ────────────────
+    const refNode = document.getElementById("context-openlink");
+    if (refNode && refNode.nextSibling) {
+      contentContext.insertBefore(menu, refNode.nextSibling);
+    } else {
+      contentContext.appendChild(menu);
+    }
+
+    // ─── Build container list for links ──────────────────────────
+    popup.addEventListener("popupshowing", () => {
+      buildContainerMenu(popup, (ucId) => {
+        const url = getLinkURLFromContextMenu();
+        if (url) {
+          openInContainerWindow(ucId, url);
+        }
+      }, document);
+    });
+
+    // ─── Show/hide based on whether a link was right-clicked ─────
+    contentContext.addEventListener("popupshowing", () => {
+      updateLinkMenuVisibility(menu);
+    });
+
+    // ─── Intercept native "Open Link in New Window" ──────────────
+    interceptLinkOpenInNewWindow(contentContext);
+  }
+
+  // ─── Show/hide the link container menu ─────────────────────────
+  function updateLinkMenuVisibility(menu) {
+    try {
+      // gContextMenu is set by Firefox when the content area context menu opens
+      // .onLink is true when the user right-clicked on a hyperlink
+      menu.hidden = !(gContextMenu && gContextMenu.onLink);
+    } catch (e) {
+      menu.hidden = true;
+    }
+  }
+
+  // ─── Get the link URL from the content area context menu ───────
+  function getLinkURLFromContextMenu() {
+    try {
+      if (gContextMenu && gContextMenu.linkURL) {
+        return gContextMenu.linkURL;
+      }
+    } catch (e) {
+      console.warn("[OpenInContainerWindow] Failed to get link URL:", e);
+    }
+    return null;
+  }
+
+  // ─── Get the current tab's container ───────────────────────────
+  function getCurrentTabContainer() {
+    try {
+      const tab = gBrowser.selectedTab;
+      if (tab) {
+        const ucId = tab.getAttribute("usercontextid");
+        if (ucId && parseInt(ucId, 10) > 0) {
+          return parseInt(ucId, 10);
+        }
+      }
+    } catch (e) {
+      console.warn("[OpenInContainerWindow] Failed to get current tab container:", e);
+    }
+    return 0;
+  }
+
+  // ─── Intercept "Open Link in New Window" on general context menu ─
+  function interceptLinkOpenInNewWindow(contentContext) {
+    let originalOnCommand = null;
+    let originalCommand = null;
+    let patched = false;
+
+    contentContext.addEventListener("popupshowing", () => {
+      const openLink = document.getElementById("context-openlink");
+      if (!openLink) return;
+
+      if (!patched) {
+        originalOnCommand = openLink.getAttribute("oncommand");
+        originalCommand = openLink.getAttribute("command");
+        patched = true;
+      }
+
+      const isEnabled = getPref(PREF_AUTO_CONTAINER_GLOBAL, true);
+
+      if (isEnabled) {
+        // Replace oncommand with a no-op instead of removing it.
+        // removeAttribute leaves the compiled handler cached — setAttribute
+        // overwrites it so the native action cannot fire.
+        openLink.setAttribute("oncommand", "/* intercepted */");
+        openLink.removeAttribute("command");
+
+        if (openLink._containerHandler) {
+          openLink.removeEventListener("command", openLink._containerHandler);
+        }
+
+        openLink._containerHandler = (event) => {
+          // Stop propagation to prevent any other listeners from also opening a window
+          event.stopPropagation();
+          event.stopImmediatePropagation();
+
+          const url = getLinkURLFromContextMenu();
+          if (!url) {
+            _runOriginalLinkOpen(originalOnCommand, originalCommand);
+            return;
+          }
+
+          const userContextId = getCurrentTabContainer();
+
+          if (userContextId > 0) {
+            openInContainerWindow(userContextId, url);
+          } else {
+            _runOriginalLinkOpen(originalOnCommand, originalCommand);
+          }
+        };
+
+        openLink.addEventListener("command", openLink._containerHandler);
+      } else {
+        // Pref is OFF — restore native behavior
+        if (openLink._containerHandler) {
+          openLink.removeEventListener("command", openLink._containerHandler);
+          openLink._containerHandler = null;
+        }
+        if (originalOnCommand) {
+          openLink.setAttribute("oncommand", originalOnCommand);
+        }
+        if (originalCommand) {
+          openLink.setAttribute("command", originalCommand);
+        }
+      }
+    });
+  }
+
+  // ─── Run the original "Open Link in New Window" command ────────
+  function _runOriginalLinkOpen(originalOnCommand, originalCommand) {
+    try {
+      const url = getLinkURLFromContextMenu();
+      if (url) {
+        openTrustedLinkIn(url, "window", {
+          triggeringPrincipal:
+            Services.scriptSecurityManager.getSystemPrincipal(),
+        });
+        return;
+      }
+    } catch (e) {
+      console.warn("[OpenInContainerWindow] Link fallback open failed:", e);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  SHARED UTILITIES
+  // ═══════════════════════════════════════════════════════════════
+
   // ─── Build / rebuild the container submenu items ───────────────
-  function buildContainerMenu(popup, doc) {
+  function buildContainerMenu(popup, onSelectCallback, doc) {
     doc = doc || document;
     // Clear existing items
     while (popup.firstChild) {
@@ -259,7 +613,6 @@
     identities.forEach((identity) => {
       const item = doc.createXULElement("menuitem");
 
-      // Use the localized name via ContextualIdentityService
       const name =
         ContextualIdentityService.getUserContextLabel(identity.userContextId) ||
         identity.name;
@@ -267,8 +620,6 @@
       item.setAttribute("label", name);
       item.setAttribute("data-usercontextid", identity.userContextId);
 
-      // Use native CSS classes for colour and icon — matches Zen's built-in
-      // "Open in New Container Tab" appearance exactly
       item.classList.add(
         "menuitem-iconic",
         `identity-color-${identity.color}`,
@@ -276,23 +627,23 @@
       );
 
       item.addEventListener("command", () => {
-        openBookmarkInContainerWindow(identity.userContextId, null, doc);
+        onSelectCallback(identity.userContextId);
       });
 
       popup.appendChild(item);
     });
   }
 
-  // ─── Open the bookmark URL in a new window with container ──────
-  function openBookmarkInContainerWindow(userContextId, urlOverride, doc) {
+  // ─── Open a URL in a new window with a specific container ──────
+  function openInContainerWindow(userContextId, urlOverride, doc) {
     doc = doc || document;
     let url = urlOverride || null;
 
+    // If no URL provided, try to get it from the places context (bookmarks)
     if (!url) {
       try {
         const popup = doc.getElementById("placesContext");
         const triggerNode = popup.triggerNode;
-
         if (triggerNode) {
           const node = getPlacesNodeFromTrigger(triggerNode, doc);
           if (node && node.uri) {
@@ -301,20 +652,18 @@
         }
       } catch (e) {
         console.error(
-          "[OpenInContainerWindow] Failed to get bookmark URL:",
+          "[OpenInContainerWindow] Failed to get URL:",
           e,
         );
       }
     }
 
     if (!url) {
-      console.warn("[OpenInContainerWindow] No URL found for the bookmark");
+      console.warn("[OpenInContainerWindow] No URL found");
       return;
     }
 
     try {
-      // openTrustedLinkIn opens URLs with system principal in a new window
-      // with the specified userContextId (container)
       openTrustedLinkIn(url, "window", {
         userContextId: userContextId,
         triggeringPrincipal:
@@ -322,10 +671,8 @@
       });
     } catch (e) {
       console.error("[OpenInContainerWindow] Failed to open window:", e);
-      // Fallback: open a normal new window and immediately navigate
       try {
         const newWin = OpenBrowserWindow({ private: false });
-        // Once the window is ready, open the URL in a container tab
         newWin.addEventListener(
           "load",
           () => {
@@ -345,151 +692,6 @@
 
   // No custom CSS needed — Zen's native identity-color-* / identity-icon-*
   // classes handle all container styling automatically.
-
-  // ─── Resolve a bookmark's workspace container ──────────────────
-  async function getWorkspaceContainerForBookmark(node) {
-    try {
-      if (
-        typeof ZenWorkspaceBookmarksStorage === "undefined" ||
-        typeof gZenWorkspaces === "undefined"
-      ) {
-        return 0;
-      }
-
-      // Try the bookmark itself first, then walk up to parent folders
-      let currentNode = node;
-      while (currentNode) {
-        const guid = currentNode.bookmarkGuid;
-        if (guid) {
-          const workspaceUuids =
-            await ZenWorkspaceBookmarksStorage.getBookmarkWorkspaces(guid);
-          if (workspaceUuids && workspaceUuids.length > 0) {
-            const workspace = gZenWorkspaces.getWorkspaceFromId(
-              workspaceUuids[0],
-            );
-            if (workspace && workspace.containerTabId) {
-              return workspace.containerTabId;
-            }
-          }
-        }
-        // Walk up to the parent folder
-        currentNode = currentNode.parent;
-      }
-    } catch (e) {
-      console.warn(
-        "[OpenInContainerWindow] Failed to resolve workspace container:",
-        e,
-      );
-    }
-    return 0;
-  }
-
-  // ─── Intercept native "Open in New Window" ─────────────────────
-  function interceptOpenInNewWindow(placesContext, doc) {
-    doc = doc || document;
-    // Store the original command/oncommand for restoration
-    let originalOnCommand = null;
-    let originalCommand = null;
-    let patched = false;
-
-    placesContext.addEventListener("popupshowing", () => {
-      const openNewWindow = doc.getElementById(
-        "placesContext_open:newwindow",
-      );
-      if (!openNewWindow) return;
-
-      // Save originals once
-      if (!patched) {
-        originalOnCommand = openNewWindow.getAttribute("oncommand");
-        originalCommand = openNewWindow.getAttribute("command");
-        patched = true;
-      }
-
-      // Check pref LIVE on every menu open
-      const isEnabled = getPref(PREF_AUTO_CONTAINER, true);
-
-      if (isEnabled) {
-        // Remove native command bindings so our handler takes over
-        openNewWindow.removeAttribute("oncommand");
-        openNewWindow.removeAttribute("command");
-
-        // Remove any previously attached listener to avoid duplicates
-        if (openNewWindow._containerHandler) {
-          openNewWindow.removeEventListener(
-            "command",
-            openNewWindow._containerHandler,
-          );
-        }
-
-        // Create handler for this menu show
-        openNewWindow._containerHandler = async () => {
-          const triggerNode =
-            doc.getElementById("placesContext")?.triggerNode;
-          if (!triggerNode) {
-            _runOriginalOpenNewWindow(doc);
-            return;
-          }
-
-          const node = getPlacesNodeFromTrigger(triggerNode, doc);
-          if (!node || !node.uri) {
-            _runOriginalOpenNewWindow(doc);
-            return;
-          }
-
-          let userContextId = 0;
-          try {
-            userContextId = await getWorkspaceContainerForBookmark(node);
-          } catch (e) {
-            console.warn("[OpenInContainerWindow] Container lookup failed:", e);
-          }
-
-          if (userContextId > 0) {
-            openBookmarkInContainerWindow(userContextId, node.uri, doc);
-          } else {
-            _runOriginalOpenNewWindow(doc);
-          }
-        };
-
-        openNewWindow.addEventListener("command", openNewWindow._containerHandler);
-      } else {
-        // Pref is OFF — restore native behavior
-        if (openNewWindow._containerHandler) {
-          openNewWindow.removeEventListener(
-            "command",
-            openNewWindow._containerHandler,
-          );
-          openNewWindow._containerHandler = null;
-        }
-        if (originalOnCommand) {
-          openNewWindow.setAttribute("oncommand", originalOnCommand);
-        }
-        if (originalCommand) {
-          openNewWindow.setAttribute("command", originalCommand);
-        }
-      }
-    });
-  }
-
-  // ─── Run the original "Open in New Window" command ──────────────
-  function _runOriginalOpenNewWindow(doc) {
-    doc = doc || document;
-    try {
-      const popup = doc.getElementById("placesContext");
-      const triggerNode = popup?.triggerNode;
-      if (triggerNode) {
-        const node = getPlacesNodeFromTrigger(triggerNode, doc);
-        if (node && node.uri) {
-          openTrustedLinkIn(node.uri, "window", {
-            triggeringPrincipal:
-              Services.scriptSecurityManager.getSystemPrincipal(),
-          });
-          return;
-        }
-      }
-    } catch (e) {
-      console.warn("[OpenInContainerWindow] Fallback open failed:", e);
-    }
-  }
 
   // ─── Bootstrap ─────────────────────────────────────────────────
   if (

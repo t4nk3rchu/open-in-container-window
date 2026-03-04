@@ -2,7 +2,7 @@
     "id": "open-in-container-window",
     "js": true,
     "name": "Open in Container Window",
-    "description": "Adds 'Open in New Container Window' option to the bookmark context menu with a submenu listing all containers. Opens a new browser window with the bookmark loaded in the selected container.",
+    "description": "Adds 'Open in New Container Window' to both bookmark and link context menus. Automatically opens bookmarks/links in their workspace container or the current tab's container.",
     "scripts": {
         "openInContainerWindow.uc.js": {
             "include": [
@@ -18,13 +18,13 @@
     "readme": "https://raw.githubusercontent.com/t4nk3rchu/open-in-container-window/refs/heads/main/README.md",
     "image": "https://raw.githubusercontent.com/t4nk3rchu/open-in-container-window/refs/heads/main/ScreenshotDemo.png",
     "author": "TankerChu",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "tags": [
         "container",
         "bookmark",
         "JavaScript"
     ],
     "createdAt": "2026-03-03",
-    "updatedAt": "2026-03-03",
+    "updatedAt": "2026-03-04",
     "fork": ["zen"]
 }
