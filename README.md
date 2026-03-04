@@ -51,7 +51,7 @@ https://github.com/user-attachments/assets/f3281295-8c5d-40e1-8916-4925a8589483
 3. Open settings and go to the "Sine" tab.
 4. Locate the Local Installation section.
 5. Type (`t4nk3rchu/open-in-container-window`) and click Install
-6. A popup for restart should appear — click on that to restart Zen.
+6. Open ('about:support') and click ('Clear Startup Cache...') and you're good to go
 
 ## Configuration Options
 
