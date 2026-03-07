@@ -3,7 +3,7 @@
 
   // ─── Preference Keys ────────────────────────────────────────────
   const PREF_AUTO_CONTAINER = "extensions.openInContainerWindow.autoContainerWindowInBookmark";
-  const PREF_AUTO_CONTAINER_GLOBAL = "extensions.openInContainerWindow.autoContainerWindowGlobally";
+  const PREF_AUTO_CONTAINER_GLOBAL = "extensions.openInContainerWindow.3";
 
   // ─── Helpers ────────────────────────────────────────────────────
   const getPref = (key, fallback) => {
@@ -158,7 +158,7 @@
           patchPlacesContext(sidebar.contentDocument);
         }
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   // ─── Show / hide bookmark menu (bookmarks only) ────────────────
@@ -192,7 +192,7 @@
           if (view && view.selectedNode) {
             return view.selectedNode;
           }
-        } catch (_) {}
+        } catch (_) { }
       }
 
       // 2. Walk up from the trigger node to find _placesNode (toolbar items)
@@ -213,7 +213,7 @@
             if (selectedNode) return selectedNode;
           }
         }
-      } catch (_) {}
+      } catch (_) { }
 
       // 4. Fallback: try the popup's triggerNode through the doc
       const popup = doc.getElementById("placesContext");
@@ -250,7 +250,10 @@
       const isEnabled = getPref(PREF_AUTO_CONTAINER, true);
 
       if (isEnabled) {
-        openNewWindow.removeAttribute("oncommand");
+        // Replace oncommand with a no-op instead of removing it.
+        // removeAttribute leaves the compiled handler cached — setAttribute
+        // overwrites it so the native action cannot fire.
+        openNewWindow.setAttribute("oncommand", "/* intercepted */");
         openNewWindow.removeAttribute("command");
 
         if (openNewWindow._containerHandler) {
@@ -260,7 +263,13 @@
           );
         }
 
-        openNewWindow._containerHandler = async () => {
+        openNewWindow._containerHandler = async (event) => {
+          // Stop propagation to prevent any other listeners from also opening a window
+          event.stopPropagation();
+          event.stopImmediatePropagation();
+
+          // Capture triggerNode and URL synchronously (before popup closes
+          // and triggerNode becomes null after the await below)
           const triggerNode =
             doc.getElementById("placesContext")?.triggerNode;
           if (!triggerNode) {
@@ -274,6 +283,10 @@
             return;
           }
 
+          // Pre-capture URL so we can use it after the async call
+          // (by then the popup is closed and triggerNode is null)
+          const url = node.uri;
+
           let userContextId = 0;
           try {
             userContextId = await getWorkspaceContainerForBookmark(node);
@@ -282,9 +295,15 @@
           }
 
           if (userContextId > 0) {
-            openInContainerWindow(userContextId, node.uri, doc);
+            openInContainerWindow(userContextId, url, doc);
           } else {
-            _runOriginalBookmarkOpen(doc);
+            // Fallback: open in regular window using pre-captured URL
+            // (can't use _runOriginalBookmarkOpen here because
+            // popup.triggerNode is null after await)
+            openTrustedLinkIn(url, "window", {
+              triggeringPrincipal:
+                Services.scriptSecurityManager.getSystemPrincipal(),
+            });
           }
         };
 
