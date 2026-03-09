@@ -3,7 +3,7 @@
 
   // ─── Preference Keys ────────────────────────────────────────────
   const PREF_AUTO_CONTAINER = "extensions.openInContainerWindow.autoContainerWindowInBookmark";
-  const PREF_AUTO_CONTAINER_GLOBAL = "extensions.openInContainerWindow.3";
+  const PREF_AUTO_CONTAINER_GLOBAL = "extensions.openInContainerWindow.autoContainerWindowGlobally";
 
   // ─── Helpers ────────────────────────────────────────────────────
   const getPref = (key, fallback) => {
