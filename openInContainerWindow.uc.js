@@ -79,10 +79,7 @@
 
       const textLabel = menu.querySelector(".menu-text");
       if (textLabel) {
-        textLabel.removeAttribute("data-l10n-id");
-        textLabel.removeAttribute("data-l10n-args");
-        textLabel.setAttribute("value", "Open in New Container Window");
-        textLabel.setAttribute("accesskey", ACCESS_KEY);
+        textLabel.remove();
       }
 
       popup = menu.querySelector("menupopup");
@@ -417,10 +414,7 @@
 
       const textLabel = menu.querySelector(".menu-text");
       if (textLabel) {
-        textLabel.removeAttribute("data-l10n-id");
-        textLabel.removeAttribute("data-l10n-args");
-        textLabel.setAttribute("value", "Open Link in New Container Window");
-        textLabel.setAttribute("accesskey", ACCESS_KEY);
+        textLabel.remove();
       }
 
       popup = menu.querySelector("menupopup");
